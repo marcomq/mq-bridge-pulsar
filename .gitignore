@@ -1,0 +1,7 @@
+/target
+Cargo.lock
+__pycache__/
+*.py[cod]
+.serena
+.tokensave
+node/prebuilds/

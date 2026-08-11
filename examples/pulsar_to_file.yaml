@@ -1,0 +1,13 @@
+routes:
+  pulsar_to_file:
+    batch_size: 100
+    input:
+      custom:
+        name: pulsar
+        config:
+          url: "pulsar://localhost:6650"
+          # topic defaults to "pulsar_to_file" when omitted.
+          subscription: "mq-bridge-example"
+    output:
+      file:
+        path: "pulsar-messages.jsonl"

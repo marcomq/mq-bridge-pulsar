@@ -1,0 +1,31 @@
+{
+  "name": "mq-bridge-pulsar",
+  "version": "0.1.0",
+  "description": "Apache Pulsar endpoint for mq-bridge, shipped as a native plugin",
+  "license": "MIT",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "mq-bridge-plugin.json",
+    "prebuilds/"
+  ],
+  "keywords": [
+    "messaging",
+    "pulsar",
+    "mq-bridge",
+    "etl"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marcomq/mq-bridge-pulsar.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "mq-bridge": ">=0.3.11"
+  }
+}

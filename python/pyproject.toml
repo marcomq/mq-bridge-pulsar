@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mq-bridge-pulsar"
+version = "0.1.0"
+description = "Apache Pulsar endpoint for mq-bridge"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+keywords = ["messaging", "pulsar", "mq-bridge", "etl"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: System :: Networking",
+]
+# Deliberately no dependency on mq-bridge: the two are installed and upgraded
+# independently, and `register()` reports a clear error if mq-bridge is absent.
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/marcomq/mq-bridge-pulsar"
+
+[tool.setuptools]
+# The wheel carries a prebuilt library, so it is platform-specific; see
+# mq_bridge.plugin_packaging stages the library and applies the platform tag.
+packages = ["mq_bridge_pulsar"]
+
+[tool.setuptools.package-data]
+mq_bridge_pulsar = ["*.so", "*.dylib", "*.dll", "mq-bridge-plugin.json"]
