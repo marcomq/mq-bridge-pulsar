@@ -5,6 +5,17 @@
   "license": "MIT",
   "main": "index.js",
   "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json",
+    "./mq-bridge-plugin.json": "./mq-bridge-plugin.json"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "files": [
     "index.js",
     "index.d.ts",
@@ -26,6 +37,9 @@
     "node": ">=18"
   },
   "peerDependencies": {
+    "mq-bridge": ">=0.3.11"
+  },
+  "devDependencies": {
     "mq-bridge": ">=0.3.11"
   }
 }

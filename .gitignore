@@ -5,3 +5,4 @@ __pycache__/
 .serena
 .tokensave
 node/prebuilds/
+node/node_modules/

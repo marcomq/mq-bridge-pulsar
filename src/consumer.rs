@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures::TryStreamExt;
 use mq_bridge::{
     errors::ConsumerError as BridgeConsumerError,
-    traits::{BatchCommitFunc, MessageConsumer, MessageDisposition},
+    traits::{BatchCommitFunc, BoxFuture, MessageConsumer, MessageDisposition},
     CanonicalMessage, ReceivedBatch,
 };
 use pulsar::{consumer::Consumer, error::Error as PulsarError, SubType, TokioExecutor};
@@ -13,6 +13,8 @@ use tokio::sync::Mutex;
 
 use crate::{config, connect};
 
+/// Only applied while draining, so an idle topic yields an empty batch and lets
+/// `exit_on_empty` fire. Live consumption blocks until a message arrives.
 const FIRST_MESSAGE_WAIT: Duration = Duration::from_millis(250);
 const NEXT_MESSAGE_WAIT: Duration = Duration::from_millis(5);
 
@@ -20,6 +22,7 @@ type SharedConsumer = Arc<Mutex<Consumer<Vec<u8>, TokioExecutor>>>;
 
 struct PulsarConsumer {
     inner: SharedConsumer,
+    exit_on_empty: bool,
 }
 
 pub(crate) async fn create(
@@ -39,6 +42,7 @@ pub(crate) async fn create(
         .context("failed to create Pulsar consumer")?;
     Ok(Box::new(PulsarConsumer {
         inner: Arc::new(Mutex::new(consumer)),
+        exit_on_empty: false,
     }))
 }
 
@@ -46,6 +50,23 @@ pub(crate) async fn create(
 impl MessageConsumer for PulsarConsumer {
     fn commit_requires_order(&self) -> bool {
         false
+    }
+
+    fn set_exit_on_empty(&mut self, exit_on_empty: bool) {
+        self.exit_on_empty = exit_on_empty;
+    }
+
+    /// Closes the broker-side consumer. The trait's `close()` awaits this hook,
+    /// so both route shutdown and an explicit `close()` release the subscription.
+    fn on_disconnect_hook(&self) -> Option<BoxFuture<'_, anyhow::Result<()>>> {
+        Some(Box::pin(async move {
+            self.inner
+                .lock()
+                .await
+                .close()
+                .await
+                .context("failed to close Pulsar consumer")
+        }))
     }
 
     async fn receive_batch(
@@ -56,19 +77,18 @@ impl MessageConsumer for PulsarConsumer {
             return Ok(ReceivedBatch::empty());
         }
 
+        let exit_on_empty = self.exit_on_empty;
         let mut messages = Vec::with_capacity(max_messages);
         let mut acknowledgements = Vec::with_capacity(max_messages);
         let mut consumer = self.inner.lock().await;
 
         for index in 0..max_messages {
-            let wait = if index == 0 {
-                FIRST_MESSAGE_WAIT
-            } else {
-                NEXT_MESSAGE_WAIT
-            };
-            let next = match tokio::time::timeout(wait, consumer.try_next()).await {
-                Ok(result) => result.map_err(consumer_error)?,
-                Err(_) => break,
+            let next = match message_wait(index, exit_on_empty) {
+                Some(wait) => match tokio::time::timeout(wait, consumer.try_next()).await {
+                    Ok(result) => result.map_err(consumer_error)?,
+                    Err(_) => break,
+                },
+                None => consumer.try_next().await.map_err(consumer_error)?,
             };
             let Some(message) = next else {
                 return Err(BridgeConsumerError::EndOfStream);
@@ -106,6 +126,17 @@ impl MessageConsumer for PulsarConsumer {
     }
 }
 
+/// How long to wait for the message at `index`, or `None` to wait indefinitely.
+/// A live route blocks for its first message; a draining one gives up after
+/// [`FIRST_MESSAGE_WAIT`] so the empty batch can end the route.
+fn message_wait(index: usize, exit_on_empty: bool) -> Option<Duration> {
+    match index {
+        0 if !exit_on_empty => None,
+        0 => Some(FIRST_MESSAGE_WAIT),
+        _ => Some(NEXT_MESSAGE_WAIT),
+    }
+}
+
 fn consumer_error(error: PulsarError) -> BridgeConsumerError {
     BridgeConsumerError::Connection(anyhow::Error::new(error))
 }
@@ -128,5 +159,17 @@ mod tests {
     fn batch_commit_requires_one_disposition_per_message() {
         assert!(validate_disposition_count(2, 2).is_ok());
         assert!(validate_disposition_count(2, 1).is_err());
+    }
+
+    #[test]
+    fn live_consumption_waits_for_the_first_message() {
+        assert_eq!(message_wait(0, false), None);
+        assert_eq!(message_wait(1, false), Some(NEXT_MESSAGE_WAIT));
+    }
+
+    #[test]
+    fn draining_gives_up_on_an_idle_topic() {
+        assert_eq!(message_wait(0, true), Some(FIRST_MESSAGE_WAIT));
+        assert_eq!(message_wait(1, true), Some(NEXT_MESSAGE_WAIT));
     }
 }

@@ -2,7 +2,7 @@ use std::any::Any;
 
 use anyhow::Context;
 use async_trait::async_trait;
-use futures::future::try_join_all;
+use futures::future::join_all;
 use mq_bridge::{errors::PublisherError, traits::MessagePublisher, CanonicalMessage, SentBatch};
 use pulsar::{
     error::Error as PulsarError,
@@ -48,15 +48,37 @@ impl MessagePublisher for PulsarPublisher {
             return Ok(SentBatch::Ack);
         }
 
-        let payloads = messages.into_iter().map(|message| message.payload.to_vec());
+        let payloads: Vec<Vec<u8>> = messages
+            .iter()
+            .map(|message| message.payload.to_vec())
+            .collect();
         let receipts = {
             let mut producer = self.inner.lock().await;
             let receipts = producer.send_all(payloads).await.map_err(publisher_error)?;
             producer.send_batch().await.map_err(publisher_error)?;
             receipts
         };
-        try_join_all(receipts).await.map_err(publisher_error)?;
-        Ok(SentBatch::Ack)
+
+        // Every receipt is awaited: a broker rejecting one message must not hide
+        // the fate of the rest. Receipts come back in send order, so the failures
+        // zip straight back onto the messages the route has to retry.
+        let failed: Vec<(CanonicalMessage, PublisherError)> = join_all(receipts)
+            .await
+            .into_iter()
+            .zip(messages)
+            .filter_map(|(receipt, message)| {
+                receipt.err().map(|error| (message, publisher_error(error)))
+            })
+            .collect();
+
+        if failed.is_empty() {
+            Ok(SentBatch::Ack)
+        } else {
+            Ok(SentBatch::Partial {
+                responses: None,
+                failed,
+            })
+        }
     }
 
     async fn flush(&self) -> anyhow::Result<()> {
