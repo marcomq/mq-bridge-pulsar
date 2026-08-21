@@ -5,6 +5,8 @@ edition = "2021"
 rust-version = "1.85"
 license = "MIT"
 description = "Apache Pulsar endpoint extension for mq-bridge"
+repository = "https://github.com/marcomq/mq-bridge-pulsar"
+include = ["/src/**", "/tests/**", "/examples/**", "/Cargo.toml", "/README.md"]
 
 [lib]
 # `rlib` for Rust users who link the endpoint directly; `cdylib` is the loadable
@@ -15,15 +17,14 @@ crate-type = ["rlib", "cdylib"]
 anyhow = "1"
 async-trait = "0.1"
 futures = "0.3"
-# mq-bridge = { version = "0.3.10", default-features = false } # use for later release, do not remove
-mq-bridge = { path = "../mq-bridge", version = "0.3.11", default-features = false }
+mq-bridge = { version = "0.4.5", default-features = false }
 pulsar = { version = "6.3.1", default-features = false, features = ["tokio-runtime"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1.34", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [dev-dependencies]
-mq-bridge = { path = "../mq-bridge", version = "0.3.10", default-features = false, features = ["plugin-sdk", "test-utils"] }
+mq-bridge = { version = "0.4.5", default-features = false, features = ["plugin-sdk", "test-utils"] }
 serde_yaml = "0.9"
 uuid = { version = "1", features = ["v4"] }
 

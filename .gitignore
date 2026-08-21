@@ -6,3 +6,9 @@ __pycache__/
 .tokensave
 node/prebuilds/
 node/node_modules/
+python/dist/
+python/build/
+python/*.egg-info/
+python/mq_bridge_pulsar/*.so
+python/mq_bridge_pulsar/*.dylib
+python/mq_bridge_pulsar/*.dll
