@@ -102,7 +102,7 @@ jobs:
       - name: Stage npm native library
         shell: bash
         working-directory: node
-        run: npx mq-bridge-package-plugin --root .. --package .
+        run: npx mq-bridge-package-plugin --root .. --package node
 
       - name: Build Python wheel
         shell: bash
