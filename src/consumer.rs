@@ -25,6 +25,15 @@ struct PulsarConsumer {
     exit_on_empty: bool,
 }
 
+fn from_pulsar_message(
+    payload: Vec<u8>,
+    properties: impl IntoIterator<Item = (String, String)>,
+) -> CanonicalMessage {
+    let mut message = CanonicalMessage::from(payload);
+    message.metadata.extend(properties);
+    message
+}
+
 pub(crate) async fn create(
     route_name: &str,
     value: &serde_json::Value,
@@ -94,7 +103,13 @@ impl MessageConsumer for PulsarConsumer {
                 return Err(BridgeConsumerError::EndOfStream);
             };
             acknowledgements.push((message.topic.clone(), message.message_id().clone()));
-            messages.push(CanonicalMessage::from(message.payload.data));
+            let properties = message
+                .metadata()
+                .properties
+                .iter()
+                .map(|property| (property.key.clone(), property.value.clone()))
+                .collect::<Vec<_>>();
+            messages.push(from_pulsar_message(message.payload.data, properties));
         }
         drop(consumer);
 
@@ -171,5 +186,19 @@ mod tests {
     fn draining_gives_up_on_an_idle_topic() {
         assert_eq!(message_wait(0, true), Some(FIRST_MESSAGE_WAIT));
         assert_eq!(message_wait(1, true), Some(NEXT_MESSAGE_WAIT));
+    }
+
+    #[test]
+    fn pulsar_properties_become_canonical_metadata() {
+        let message = from_pulsar_message(
+            b"payload".to_vec(),
+            [("source".to_owned(), "test".to_owned())],
+        );
+
+        assert_eq!(message.get_payload_str(), "payload");
+        assert_eq!(
+            message.metadata.get("source").map(String::as_str),
+            Some("test")
+        );
     }
 }

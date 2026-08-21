@@ -11,6 +11,9 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+permissions:
+  contents: read
+
 jobs:
   # The conformance suite is `#[ignore]`d because it needs a Pulsar broker.
   # Docker and the compose plugin are preinstalled on ubuntu runners, so the
@@ -46,6 +49,9 @@ jobs:
 
       - name: Unit tests
         run: cargo test --lib
+
+      - name: Pulsar integration tests
+        run: cargo test --test integration -- --ignored --nocapture
 
       - name: Endpoint conformance, linked and plugin-loaded
         run: cargo test --test plugin -- --ignored --nocapture

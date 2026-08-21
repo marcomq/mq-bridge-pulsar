@@ -6,7 +6,7 @@ use futures::future::join_all;
 use mq_bridge::{errors::PublisherError, traits::MessagePublisher, CanonicalMessage, SentBatch};
 use pulsar::{
     error::Error as PulsarError,
-    producer::{Producer, ProducerOptions},
+    producer::{Message as PulsarMessage, Producer, ProducerOptions},
     TokioExecutor,
 };
 use tokio::sync::Mutex;
@@ -15,6 +15,14 @@ use crate::{config, connect};
 
 struct PulsarPublisher {
     inner: Mutex<Producer<TokioExecutor>>,
+}
+
+fn to_pulsar_message(message: &CanonicalMessage) -> PulsarMessage {
+    PulsarMessage {
+        payload: message.payload.to_vec(),
+        properties: message.metadata.clone(),
+        ..Default::default()
+    }
 }
 
 pub(crate) async fn create(
@@ -48,10 +56,7 @@ impl MessagePublisher for PulsarPublisher {
             return Ok(SentBatch::Ack);
         }
 
-        let payloads: Vec<Vec<u8>> = messages
-            .iter()
-            .map(|message| message.payload.to_vec())
-            .collect();
+        let payloads: Vec<PulsarMessage> = messages.iter().map(to_pulsar_message).collect();
         let receipts = {
             let mut producer = self.inner.lock().await;
             let receipts = producer.send_all(payloads).await.map_err(publisher_error)?;
@@ -117,5 +122,19 @@ mod tests {
             publisher_error(PulsarError::Custom("invalid message".into())),
             PublisherError::NonRetryable(_)
         ));
+    }
+
+    #[test]
+    fn canonical_metadata_becomes_pulsar_properties() {
+        let mut message = CanonicalMessage::from("payload");
+        message.metadata.insert("source".into(), "test".into());
+
+        let pulsar = to_pulsar_message(&message);
+
+        assert_eq!(pulsar.payload, b"payload");
+        assert_eq!(
+            pulsar.properties.get("source").map(String::as_str),
+            Some("test")
+        );
     }
 }
