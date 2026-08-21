@@ -3,7 +3,7 @@ name: Release packages
 on:
   push:
     tags:
-      - "v*"
+      - "[0-9]*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -29,21 +29,18 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          python scripts/set_version.py --check
           python - <<'PY'
-          import json
           import os
           import tomllib
           from pathlib import Path
 
           expected = os.environ["RELEASE_TAG"].removeprefix("v")
-          versions = {
-              "Cargo.toml": tomllib.loads(Path("Cargo.toml").read_text())["package"]["version"],
-              "node/package.json": json.loads(Path("node/package.json").read_text())["version"],
-              "python/pyproject.toml": tomllib.loads(Path("python/pyproject.toml").read_text())["project"]["version"],
-          }
-          mismatches = {path: version for path, version in versions.items() if version != expected}
-          if mismatches:
-              raise SystemExit(f"tag version {expected!r} does not match manifests: {mismatches}")
+          actual = tomllib.loads(Path("Cargo.toml").read_text())["package"]["version"]
+          if actual != expected:
+              raise SystemExit(
+                  f"tag version {expected!r} does not match Cargo.toml {actual!r}"
+              )
           print(f"releasing {expected}")
           PY
 
@@ -118,6 +115,42 @@ jobs:
           python -m auditwheel repair python/dist/*.whl --wheel-dir python/repaired
           rm python/dist/*.whl
           mv python/repaired/*.whl python/dist/
+
+      - name: Build standalone plugin archive
+        shell: bash
+        env:
+          PLUGIN_PLATFORM: ${{ matrix.platform }}
+        run: |
+          python - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+
+          platform = os.environ["PLUGIN_PLATFORM"]
+          libraries = [
+              path
+              for path in Path("node/prebuilds").rglob("*")
+              if path.suffix in {".so", ".dylib", ".dll"}
+          ]
+          if len(libraries) != 1:
+              raise SystemExit(f"expected one staged plugin library, found {libraries}")
+
+          staging = Path("release-dist/staging")
+          staging.mkdir(parents=True)
+          shutil.copy2(libraries[0], staging / libraries[0].name)
+          shutil.copy2("node/mq-bridge-plugin.json", staging / "mq-bridge-plugin.json")
+
+          base = Path("release-dist") / f"mq-bridge-pulsar-{platform}"
+          archive_format = "zip" if platform.startswith("win32-") else "gztar"
+          shutil.make_archive(str(base), archive_format, staging)
+          PY
+
+      - name: Upload standalone plugin archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-${{ matrix.platform }}
+          path: release-dist/mq-bridge-pulsar-*
+          if-no-files-found: error
 
       - name: Upload npm native library
         uses: actions/upload-artifact@v4
@@ -252,11 +285,31 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download release artifacts
+      - name: Download standalone plugin archives
         uses: actions/download-artifact@v4
         with:
-          pattern: "*-*"
-          path: artifacts
+          pattern: standalone-*
+          path: artifacts/plugins
+          merge-multiple: true
+
+      - name: Download npm tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-tarball
+          path: artifacts/npm
+
+      - name: Download Python wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: python-*
+          path: artifacts/python
+          merge-multiple: true
+
+      - name: Download crate archive
+        uses: actions/download-artifact@v4
+        with:
+          name: crate-package
+          path: artifacts/crate
 
       - name: Create release
         uses: softprops/action-gh-release@v2

@@ -94,6 +94,15 @@ mq-bridge-package-plugin --pack --out npm
 
 Both need `protoc` on `PATH`, like any build of this crate.
 
+`Cargo.toml` is the source of truth for the package version. Update every
+ecosystem manifest together before tagging a release:
+
+```console
+python3 scripts/set_version.py 0.1.3
+```
+
+CI checks that the Cargo, npm and Python versions remain synchronized.
+
 ## Integration tests
 
 Both Docker-backed tests are ignored by default:
