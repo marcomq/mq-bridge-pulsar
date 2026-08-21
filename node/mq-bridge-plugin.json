@@ -1,0 +1,4 @@
+{
+  "name": "pulsar",
+  "library": "mq_bridge_pulsar"
+}

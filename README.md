@@ -12,7 +12,7 @@ Building `pulsar-rs` requires the Protocol Buffers compiler (`protoc`) to be on
 Register the endpoint before any route starts:
 
 ```rust
-mq_bridge_pulsar::register();
+mq_bridge_pulsar::register()?;
 ```
 
 Then use the explicit custom endpoint form:
