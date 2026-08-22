@@ -29,7 +29,7 @@ pub(crate) async fn create(
     route_name: &str,
     value: &serde_json::Value,
 ) -> anyhow::Result<Box<dyn MessagePublisher>> {
-    let (config, topic, _) = config::resolve(route_name, value)?;
+    let (config, topic, _) = config::resolve_for_publisher(route_name, value)?;
     let client = connect(&config.url).await?;
     let producer = client
         .producer()

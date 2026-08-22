@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use mq_bridge::traits::{CustomEndpointFactory, MessageConsumer, MessagePublisher};
 use pulsar::{Pulsar, TokioExecutor};
 
-pub use config::PulsarConfig;
+pub use config::{InitialPosition, PulsarConfig};
 
 #[derive(Debug, Default)]
 pub struct PulsarFactory;

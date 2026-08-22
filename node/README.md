@@ -24,6 +24,7 @@ pulsar_to_file:
         url: "pulsar://localhost:6650"
         topic: "persistent://public/default/orders"
         subscription: "order-workers"
+        initial_position: earliest
   output:
     file:
       path: "orders.jsonl"
@@ -31,6 +32,11 @@ pulsar_to_file:
 route.start();
 route.join(); // block until the route stops
 ```
+
+`initial_position` (optional, input only, `latest` by default) decides where
+Pulsar starts a subscription it has to create; `earliest` is what reading a
+topic's existing backlog needs. It applies only at creation — see the root
+`README.md` for the full rules.
 
 `register()` returns the endpoint name (`pulsar`) and is a no-op when called
 again. `mq-bridge` selects the current platform's library from this package's

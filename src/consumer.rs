@@ -8,10 +8,17 @@ use mq_bridge::{
     traits::{BatchCommitFunc, BoxFuture, MessageConsumer, MessageDisposition},
     CanonicalMessage, ReceivedBatch,
 };
-use pulsar::{consumer::Consumer, error::Error as PulsarError, SubType, TokioExecutor};
+use pulsar::{
+    consumer::{Consumer, ConsumerOptions, InitialPosition as PulsarInitialPosition},
+    error::Error as PulsarError,
+    SubType, TokioExecutor,
+};
 use tokio::sync::Mutex;
 
-use crate::{config, connect};
+use crate::{
+    config::{self, InitialPosition},
+    connect,
+};
 
 /// Only applied while draining, so an idle topic yields an empty batch and lets
 /// `exit_on_empty` fire. Live consumption blocks until a message arrives.
@@ -38,7 +45,7 @@ pub(crate) async fn create(
     route_name: &str,
     value: &serde_json::Value,
 ) -> anyhow::Result<Box<dyn MessageConsumer>> {
-    let (config, topic, subscription) = config::resolve(route_name, value)?;
+    let (config, topic, subscription) = config::resolve_for_consumer(route_name, value)?;
     let client = connect(&config.url).await?;
     let consumer = client
         .consumer()
@@ -46,6 +53,10 @@ pub(crate) async fn create(
         .with_consumer_name(format!("mq-bridge-{route_name}"))
         .with_subscription_type(SubType::Shared)
         .with_subscription(subscription)
+        .with_options(
+            ConsumerOptions::default()
+                .with_initial_position(initial_position(config.initial_position)),
+        )
         .build::<Vec<u8>>()
         .await
         .context("failed to create Pulsar consumer")?;
@@ -152,6 +163,15 @@ fn message_wait(index: usize, exit_on_empty: bool) -> Option<Duration> {
     }
 }
 
+/// Only honoured when Pulsar creates the subscription. An existing
+/// subscription resumes from its own cursor whatever this says.
+fn initial_position(position: InitialPosition) -> PulsarInitialPosition {
+    match position {
+        InitialPosition::Latest => PulsarInitialPosition::Latest,
+        InitialPosition::Earliest => PulsarInitialPosition::Earliest,
+    }
+}
+
 fn consumer_error(error: PulsarError) -> BridgeConsumerError {
     BridgeConsumerError::Connection(anyhow::Error::new(error))
 }
@@ -186,6 +206,18 @@ mod tests {
     fn draining_gives_up_on_an_idle_topic() {
         assert_eq!(message_wait(0, true), Some(FIRST_MESSAGE_WAIT));
         assert_eq!(message_wait(1, true), Some(NEXT_MESSAGE_WAIT));
+    }
+
+    #[test]
+    fn earliest_maps_to_pulsars_backlog_reading_position() {
+        assert_eq!(
+            initial_position(InitialPosition::Earliest),
+            PulsarInitialPosition::Earliest
+        );
+        assert_eq!(
+            initial_position(InitialPosition::Latest),
+            PulsarInitialPosition::Latest
+        );
     }
 
     #[test]

@@ -48,6 +48,34 @@ pip install "mq-bridge-py[plugin-packaging]"
 python -m mq_bridge.plugin_packaging --package python/mq_bridge_pulsar --out dist
 ```
 
+## Testing
+
+`python/tests/` exercises the endpoint the way Python actually loads it — as a
+native plugin through the ABI — so it complements, rather than repeats, the
+directly linked Rust tests.
+
+```console
+docker compose -f tests/docker-compose.yml up -d
+pip install mq-bridge-py mq-bridge-pulsar pytest
+pytest python/tests -v
+docker compose -f tests/docker-compose.yml down
+```
+
+Every test skips rather than fails when the packages are missing or no broker is
+listening, so the file is safe to collect anywhere.
+
+One trap is worth knowing: a wheel is a **compiled artifact**, so an installed
+`mq-bridge-pulsar` is easily older than this checkout, and a fix you just made
+here will not be in it. The tests probe for that and skip with instructions
+instead of reporting a confusing `unknown field` failure. To test what you just
+wrote, rebuild and reinstall first:
+
+```console
+pip install "mq-bridge-py[plugin-packaging]"
+python -m mq_bridge.plugin_packaging --package python/mq_bridge_pulsar --out python/dist
+pip install --force-reinstall python/dist/*.whl
+```
+
 ## Building the wheel
 
 The generic builder shipped by mq-bridge builds the Rust `cdylib`, stages it

@@ -25,7 +25,17 @@ input:
       url: "pulsar://localhost:6650"
       topic: "persistent://public/default/orders" # optional; route name by default
       subscription: "order-workers"              # optional; mq-bridge-<route> by default
+      initial_position: earliest                 # optional; latest by default, input only
 ```
+
+`initial_position` decides where Pulsar starts a subscription it has to create:
+`latest` (Pulsar's own default) delivers only what is published after the
+subscription exists, so a topic's existing backlog stays unreachable; `earliest`
+starts at the oldest retained message and is what copying a topic that already
+has data needs. It applies **only when the subscription is created** — an
+existing subscription resumes from its own committed cursor, so pointing a route
+at one that has already read to the end will not replay it. Use a fresh
+`subscription` name to re-read from the beginning.
 
 Consumers use a shared subscription. Messages are acknowledged or negatively
 acknowledged only from mq-bridge's batch commit callback, after downstream
@@ -114,7 +124,9 @@ cargo test --test plugin -- --ignored --nocapture
 
 The first starts a Pulsar standalone broker, publishes a batch through the
 registered factory, consumes it through the same extension, verifies payload
-order, and only then invokes the batch commit callback. The second runs
+order, and only then invokes the batch commit callback; a second case publishes
+*before* any consumer exists and checks that `initial_position: earliest` still
+reads the backlog. The second file runs
 mq-bridge's endpoint conformance suite twice against the same broker — once
 against the directly linked factory, once against the factory loaded from the
 compiled plugin — and requires the results to match.
